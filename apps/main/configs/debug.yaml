@@ -35,8 +35,10 @@ data:
     n_views: 2
     load_async: true
     tokenizer:
-        name: sp
-        path: /fsx-labs/broz/data/large_experiments/theorem/datasets/tokenizers/tokenizer_final_32k.minus_inf_ws.model
+        path: /fsx-data-quality-law/new/tokenizers/Llama3.2-1B/tokenizer.model
+        name: tiktoken
+            #path: /fsx-labs/broz/data/large_experiments/theorem/datasets/tokenizers/tokenizer_final_32k.minus_inf_ws.model
+            #name: sp
 
 profiling:
     run: true

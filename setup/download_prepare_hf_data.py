@@ -1,5 +1,6 @@
 # Copyright (c) Meta Platforms, Inc. and affiliates.
 
+import argparse
 import os
 import subprocess
 import sys
@@ -33,7 +34,8 @@ def parquet_to_jsonl(dataset, work_dir, src_dir, tgt_dir, ntasks=64):
         pipeline=[
             ParquetReader(
                 src_dir,
-                progress=True,
+                file_progress=True,
+                doc_progress=True,
                 glob_pattern="**/*.parquet",
             ),
             JsonlWriter(
@@ -62,14 +64,14 @@ def setup_terashuf(work_dir):
     return terashuf_dir
 
 
-def main(dataset):
+def main(dataset, memory, data_dir, seed=42):
     # Configuration
     repo_id = {
         "fineweb_edu": "HuggingFaceFW/fineweb-edu",
         "fineweb_edu_10bt": "HuggingFaceFW/fineweb-edu",
         "dclm_baseline_1.0": "mlfoundations/dclm-baseline-1.0",
     }[dataset]
-    src_dir = f"data/{dataset}"
+    src_dir = f"{data_dir}/{dataset}"
     out_dir = f"{src_dir}_shuffled"
     os.makedirs(out_dir, exist_ok=True)
     work_dir = src_dir  # Directory of this Python file
@@ -103,8 +105,8 @@ def main(dataset):
         parquet_to_jsonl(dataset, work_dir, src_dir, src_dir)
 
     # Set up environment variables
-    os.environ["MEMORY"] = "1000.0"
-    os.environ["SEED"] = "42"
+    os.environ["MEMORY"] = f"{memory}"
+    os.environ["SEED"] = f"{seed}"
 
     # Run the original shuffling and splitting command
     terashuf_executable = os.path.join(terashuf_dir, "terashuf")
@@ -112,6 +114,7 @@ def main(dataset):
         f"ulimit -n 100000 && "
         f"find {src_dir} -type f -name '*{orig_extension}' -print0 | xargs -0 {cat_command} | {terashuf_executable} | "
         f"split -n r/{nchunks} -d --suffix-length 2 --additional-suffix {suffix} - {out_dir}/{prefix}"
+        "; trap 'echo \"Caught signal 13, exiting with code 1\"; exit 1' SIGPIPE;"
     )
 
     # Create validation set and remove lines from chunks
@@ -125,4 +128,12 @@ def main(dataset):
 
 
 if __name__ == "__main__":
-    main(sys.argv[1])
+    parser = argparse.ArgumentParser()
+    parser.add_argument("dataset", type=str)
+    parser.add_argument("memory", type=float, default=8)
+    parser.add_argument("--data_dir", type=str, default="data")
+    parser.add_argument("--seed", type=int, default=42)
+
+    args = parser.parse_args()
+
+    main(args.dataset, args.memory, args.data_dir, args.seed)

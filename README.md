@@ -4,11 +4,13 @@
 
 Meta Lingua is a minimal and fast LLM training and inference library designed for research. Meta Lingua uses easy-to-modify PyTorch components in order to try new architectures, losses, data, etc. We aim for this code to enable end to end training, inference and evaluation as well as provide tools to better understand speed and stability. While Meta Lingua is currently under development, we provide you with multiple `apps` to showcase how to use this codebase.
 
-![Overview of lingua](lingua_overview.svg)
+<p align="center">  
+ <img src="lingua_overview.svg" width="100%"/>
+</p>
 
 ## Quick start
 
-The following commands launch a slurm job that creates an environment for Meta Lingua.
+The following commands launch a SLURM job that creates an environment for Meta Lingua.
 The env creation should take around 5 minutes without counting downloads. 
 
 ```bash
@@ -16,17 +18,26 @@ git clone https://github.com/facebookresearch/lingua
 cd lingua
 
 bash setup/create_env.sh
-# or if you have access to a slurm cluster
+# or if you have access to a SLURM cluster
 sbatch setup/create_env.sh
 ```
 Once that is done your can activate the environment 
-```
+```bash
 conda activate lingua_<date>
 ```
-and launch a debug job to check if everything works.  **The provided configurations are templates, you need to adapt them for them to work (change dump_dir, data root dir etc...)**
+use the provided script to download and prepare data from huggingface (among `fineweb_edu`, `fineweb_edu_10bt`, or `dclm_baseline_1.0`).
+This command will download the `fineweb_edu` and prepare it for training in the `./data` directory, specifying the amount of memory `terashuf` (the tool used to shuffle samples) will be allocated.
+```bash
+python setup/download_prepare_hf_data.py fineweb_edu <MEMORY> --data_dir ./data --seed 42
+```
+to download tokenizer (here llama3), use the folowing script:
+```bash
+python setup/download_tokenizer.py llama3 <SAVE_PATH> --api_key <HUGGINGFACE_TOKEN>
+```
+Now launch a debug job to check if everything works.  **The provided configurations are templates, you need to adapt them for them to work (change `dump_dir`, `data.root_dir`, `data.tokenizer.path`, etc ...)**
 
 ```bash
-# stool stands for slurm tool !
+# stool stands for SLURM tool !
 python -m lingua.stool script=apps.main.train config=apps/main/configs/debug.yaml nodes=1 partition=<partition>
 # if you want to launch locally you can use torchrun
 torchrun --nproc-per-node 8 -m apps.main.train config=apps/main/configs/debug.yaml
@@ -100,25 +111,25 @@ Nothing is sacred in Meta Lingua. We've specifically tried to make it as easily 
 
 Here's a quick description of the most important files and features:
 
-- **transformer.py** : Defines model architecture. This is pure PyTorch nn.Module ! Nothing fancy here. 
-- **distributed.py** : Handles distributing the model on multiple GPUs. This is done through parallelize_module function which wraps your vanilla nn.Module and applies nearly any combination of Data Parallel, Fully Sharded Data Parallel, Model Parallelism, torch.compile, activation checkpointing and float8. 
-- **data.py** : Dataloader for LLM pretraining.
+- **`transformer.py`** : Defines model architecture. This is pure PyTorch `nn.Module` ! Nothing fancy here. 
+- **`distributed.py`** : Handles distributing the model on multiple GPUs. This is done through `parallelize_module` function which wraps your vanilla `nn.Module` and applies nearly any combination of Data Parallel, Fully Sharded Data Parallel, Model Parallelism, `torch.compile`, activation checkpointing and `float8`. 
+- **`data.py`** : Dataloader for LLM pretraining.
 
 <p align="center">  
  <img src="dataloader.png" width="40%"/>
 </p>
 
-- **profiling.py** : Small wrapper around xformers' profiler which provides automatic MFU and HFU calculation and dumps profile traces in profiling folder in your dump directory. It also has memory profiling trace. 
-- **checkpoint.py** : Manages model checkpoints. It saves model in checkpoints folder in your dump dir in .distcp format which is the new PyTorch distributed saving method. This format allows to reload the model with a different number of GPUs and with a different sharding. You can also convert those into normal PyTorch checkpoints with `torch.distributed.checkpoint.format_utils.dcp_to_torch_save` and the other way around `torch_save_to_dcp`.
-- **args.py** : Utilities to work with configs. 
+- **`profiling.py`** : Small wrapper around xformers' profiler which provides automatic MFU and HFU calculation and dumps profile traces in profiling folder in your dump directory. It also has memory profiling trace. 
+- **`checkpoint.py`** : Manages model checkpoints. It saves model in checkpoints folder in your dump dir in .distcp format which is the new PyTorch distributed saving method. This format allows to reload the model with a different number of GPUs and with a different sharding. You can also convert those into normal PyTorch checkpoints with `torch.distributed.checkpoint.format_utils.dcp_to_torch_save` and the other way around `torch_save_to_dcp`.
+- **`args.py`** : Utilities to work with configs. 
 
 ## Configuration
 
-Most components need configuration and we chose to use data classes to represent these configuration objects. args.py helps with converting between config.yaml and config dictionaries into the respective data classes. 
+Most components need configuration and we chose to use data classes to represent these configuration objects. `args.py` helps with converting between `config.yaml` and config dictionaries into the respective data classes. 
 
-So for examples the TrainArgs in apps/main/train.py has a LMTransformerArgs, OptimArgs, etc ... as children. 
+So for examples the `TrainArgs` in `apps/main/train.py` has a `LMTransformerArgs`, `OptimArgs`, etc ... as children. 
 
-Here is an example configuration file that will be converted to TrainArgs:
+Here is an example configuration file that will be converted to `TrainArgs`:
 
 ```yaml
 # This is where Meta Lingua will store anything related to the experiment. 
@@ -162,7 +173,7 @@ data:
 
 ### Command line arguments
 
-The command line interface in all scripts (train.py, eval.py, stool.py) uses [OmegaConf](https://omegaconf.readthedocs.io/en/2.3_branch/usage.html#from-command-line-arguments)
+The command line interface in all scripts (`train.py`, `eval.py`, `stool.py`) uses [OmegaConf](https://omegaconf.readthedocs.io/en/2.3_branch/usage.html#from-command-line-arguments)
 This accepts arguments as a dot list
 So if the dataclass looks like
 ```python
@@ -177,16 +188,16 @@ class LMTransformerArgs:
     n_layers: int = 12
 ```
 
-Then you can pass model.dim=32 to change values in LMTransformerArgs
-or just name=tictac for top level attributes.
+Then you can pass `model.dim = 32` to change values in `LMTransformerArgs`
+or just `name = tictac` for top level attributes.
 
-**train.py** simply takes as argument the path to a config file and will load that config. The behavior here is as follows:
-1. We instantiate TrainArgs with its default values
+**`train.py`** simply takes as argument the path to a config file and will load that config. The behavior here is as follows:
+1. We instantiate `TrainArgs` with its default values
 2. We override those default values with the ones in the provided config file
 3. We override the result with the additional arguments provided through command line
 
-If we take the DummyArgs example above, calling train.py with `train.py config=debug.yaml model.dim=64 name=tictac` 
-where debug.yaml contains 
+If we take the `DummyArgs` example above, calling `train.py` with `train.py config=debug.yaml model.dim=64 name=tictac` 
+where `debug.yaml` contains 
 ```yaml
 model:
     n_layers: 24
@@ -196,13 +207,13 @@ will launch training with the config
 DummyArgs(name="tictac", LMTransformerArgs(dim=64, n_layers=24))
 ```
 
-### Launching with slurm
+### Launching with SLURM
 
 Since we want to do distributed training, we need `train.py` to run N times (with N being the number of GPUs)
 
 The easiest way to do this is through SLURM. And in order to make that simpler, we provide `lingua/stool.py` which is a simple python script that 
-1. Saves the provided config to dump_dir
-2. Copies your current code to dump_dir in order to back it up 
+1. Saves the provided config to `dump_dir`
+2. Copies your current code to `dump_dir` in order to back it up 
 3. Creates an sbatch file `submit.slurm` which is then used to launch the job with the provided config. 
 
 It can either be used through command line 
@@ -213,10 +224,10 @@ python -m lingua.stool config=apps/main/configs/debug.yaml nodes=1 account=fair_
 
 Or the `launch_job` function directly. This allows you for example to create many arbitrary configs (to sweep parameters, do ablations) in a jupyter notebook and launch jobs directly from there. 
 
-Since the configuration file is copied to dump_dir, an easy way to iterate is to simply change the config file and launch the same command above. 
+Since the configuration file is copied to `dump_dir`, an easy way to iterate is to simply change the config file and launch the same command above. 
 
 ## Debugging
-In order to iterate quickly, it is preferable not to have to wait for a slurm allocation every time. You can instead ask slurm to allocate resources for you, then once they're allocated you can run multiple commands on that same allocation. 
+In order to iterate quickly, it is preferable not to have to wait for a SLURM allocation every time. You can instead ask SLURM to allocate resources for you, then once they're allocated you can run multiple commands on that same allocation. 
 
 For example you can do :
 
@@ -224,25 +235,25 @@ For example you can do :
 salloc --nodes 2 --cpus-per-gpu 16 --mem 1760GB --gres=gpu:8 --exclusive --time=72:00:00
 ```
 
-Which will give you access to 2 nodes in your current terminal. Once the allocation is done, you will see some slurm environement variables that were automatically added such as $SLURM_JOB_ID and others... This allows you for example to do in the same terminal
+Which will give you access to 2 nodes in your current terminal. Once the allocation is done, you will see some SLURM environement variables that were automatically added such as `$SLURM_JOB_ID` and others... This allows you for example to do in the same terminal
 
 ```bash
 srun -n 16 python -m apps.main.train config=apps/main/configs/debug.yaml
 ```
 
-Which will run the `python -m apps.main.train config=apps/main/configs/debug.yaml` command on each of the 16 GPUs. If this crashes or ends you can just relaunch srun again because the nodes are already allocated to you and you don't have to wait for slurm to give you the resources again.
+Which will run the `python -m apps.main.train config=apps/main/configs/debug.yaml` command on each of the 16 GPUs. If this crashes or ends you can just relaunch `srun` again because the nodes are already allocated to you and you don't have to wait for SLURM to give you the resources again.
 
 This will also show you the outputs of all those commands in the same terminal which might become cumbersome. 
 
-Instead you can use stool directly to configure logs to be separated into different files per GPU.
+Instead you can use `stool` directly to configure logs to be separated into different files per GPU.
 
 ```bash
 python -m lingua.stool config=apps/main/configs/debug.yaml nodes=2 launcher=bash dirs_exists_ok=true
 ```
 
-Notice that we added **launcher=bash** which basically means that the generated submit.slurm will simply be executed instead of submitting it through sbatch. The submit.slurm has an srun command also so this is very similar to the above srun command. We also add **dirs_exists_ok=true** to tell stool that it is okay to override things in an existing folder (code, config, etc)
+Notice that we added **`launcher=bash`** which basically means that the generated `submit.slurm` will simply be executed instead of submitting it through `sbatch`. The `submit.slurm` has an `srun` command also so this is very similar to the above `srun` command. We also add **`dirs_exists_ok=true`** to tell `stool` that it is okay to override things in an existing folder (code, config, etc)
 
-If you want to use pdb to step through your code, you should use -n 1 to run only on 1 GPU. 
+If you want to use `pdb` to step through your code, you should use `-n 1` to run only on 1 GPU. 
 
 ## Evaluations
 
@@ -254,7 +265,7 @@ srun -n 8 python -u -m apps.main.eval config=apps/main/configs/eval.yaml
 
 You need to specify the checkpoint and dump dir of the evaluation in that config
 
-Or through stool with
+Or through `stool` with
 
 ```bash
 python -m lingua.stool script=apps.main.eval config=apps/main/configs/eval.yaml nodes=1 account=fair_amaia_cw_codegen qos=lowest
@@ -280,7 +291,7 @@ python -m lingua.stool script=apps.main.eval config=apps/main/configs/eval.yaml 
  ┃ ┃ ┗ 📜train_state_00001.json
  ┣ 📂code # Backup of the code at the moment the job was launched
  ┣ 📂logs
- ┃ ┗ 📂166172 # Logs for each GPU in this slurm job.
+ ┃ ┗ 📂166172 # Logs for each GPU in this SLURM job.
  ┃ ┃ ┣ 📜166172.stderr
  ┃ ┃ ┣ 📜166172.stdout
  ┃ ┃ ┣ 📜166172_0.err
