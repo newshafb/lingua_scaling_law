@@ -24,7 +24,7 @@ class StoolArgs:
     override: bool = False  # Wether to delete dump dir and restart
     nodes: int = -1  # The number of nodes to run the job on.
     ngpu: int = 8  # The number of GPUs required per node.
-    ncpu: int = 16  # The number of CPUs allocated per GPU.
+    ncpu: int = 12  # The number of CPUs allocated per GPU.
     mem: str = ""  # The amount of memory to allocate.
     anaconda: str = "default"  # The path to the anaconda environment.
     constraint: str = ""  # The constraint on the nodes.
