@@ -56,7 +56,7 @@ class Fp8LinearFn(torch.autograd.Function):
             b = b_t.t().contiguous()
             amax_grad_out = grad_out.abs().amax(dim=-1, keepdim=True)
             amax_b = amax_b.repeat(b.shape[0], 1)
-            grad_a = matmul(grad_out, amax_grad_out, torch.float8_e5m2, b, amax_b, torch.float8_e4m3fn, None)
+            grad_a = matmul(grad_out, amax_grad_out, torch.float8_e4m3fn, b, amax_b, torch.float8_e4m3fn, None)
         else:
             grad_a = None
         if ctx.b_requires_grad:

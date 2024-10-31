@@ -2,10 +2,10 @@
 
 import argparse
 import os
+import time
 import subprocess
-import sys
+import requests
 from huggingface_hub import snapshot_download
-
 
 def run_command(command):
     print(f"Running: {command}")
@@ -14,14 +14,25 @@ def run_command(command):
 
 def download_dataset(repo_id, local_dir, allow_patterns):
     print(f"Downloading dataset from {repo_id}...")
-    snapshot_download(
-        repo_id,
-        repo_type="dataset",
-        local_dir=local_dir,
-        allow_patterns=allow_patterns,
-        resume_download=True,
-        max_workers=8,
-    )
+    max_retries = 5
+    retry_delay = 10  # seconds
+    for attempt in range(max_retries):
+        try:
+            snapshot_download(
+                repo_id,
+                repo_type="dataset",
+                local_dir=local_dir,
+                allow_patterns=allow_patterns,
+                resume_download=True,
+                max_workers=16, # Don't hesitate to increase this number to lower the download time
+            )
+            break
+        except requests.exceptions.ReadTimeout:
+            if attempt < max_retries - 1:
+                print(f"Timeout occurred. Retrying in {retry_delay} seconds...")
+                time.sleep(retry_delay)
+            else:
+                raise
     print(f"Dataset downloaded to {local_dir}")
 
 
@@ -70,6 +81,7 @@ def main(dataset, memory, data_dir, seed=42):
         "fineweb_edu": "HuggingFaceFW/fineweb-edu",
         "fineweb_edu_10bt": "HuggingFaceFW/fineweb-edu",
         "dclm_baseline_1.0": "mlfoundations/dclm-baseline-1.0",
+        "dclm_baseline_1.0_10prct": "mlfoundations/dclm-baseline-1.0",
     }[dataset]
     src_dir = f"{data_dir}/{dataset}"
     out_dir = f"{src_dir}_shuffled"
@@ -80,16 +92,19 @@ def main(dataset, memory, data_dir, seed=42):
         "fineweb_edu": ".jsonl",
         "fineweb_edu_10bt": ".jsonl",
         "dclm_baseline_1.0": ".jsonl.zst",
+        "dclm_baseline_1.0_10prct": ".jsonl.zst",
     }[dataset]
     cat_command = {
         "fineweb_edu": "cat",
         "fineweb_edu_10bt": "cat",
         "dclm_baseline_1.0": "zstdcat",
+        "dclm_baseline_1.0_10prct": "zstdcat",
     }[dataset]
     allow_patterns = {
         "fineweb_edu": None,
         "fineweb_edu_10bt": "sample/10BT/*",
         "dclm_baseline_1.0": "*.jsonl.zst",
+        "dclm_baseline_1.0_10prct": "global-shard_01_of_10/*.jsonl.zst",
     }[dataset]
     suffix = ".jsonl"
     nchunks = 32

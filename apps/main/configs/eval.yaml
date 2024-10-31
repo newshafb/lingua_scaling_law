@@ -13,7 +13,7 @@ harness:
       dataset_kwargs:
         trust_remote_code: true
     - task: nq_open
-      num_shot: 5
+      num_fewfixeshot: 5
   # - piqa
   # - siqa
   # - tqa

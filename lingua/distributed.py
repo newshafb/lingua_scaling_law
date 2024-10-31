@@ -406,13 +406,6 @@ def parallelize_model(
             model, distributed_args.float8_recipe, distributed_args.float8_filter
         )
 
-    if distributed_args.float8_recipe is not None:
-        if distributed_args.tp_size > 1:
-            raise RuntimeError("float8 is incompatible with tensor-parallelism for now")
-        model = convert_linears_to_fp8(
-            model, distributed_args.float8_recipe, distributed_args.float8_filter
-        )
-
     param_dtype = dict(fp32=torch.float32, fp16=torch.float16, bf16=torch.bfloat16)[
         distributed_args.model_dtype
     ]
