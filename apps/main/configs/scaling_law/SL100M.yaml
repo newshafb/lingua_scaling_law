@@ -1,0 +1,8 @@
+include: ["apps/main/configs/scaling_law/base.yaml"]
+
+steps: 1000
+
+model:
+    dim: 1024
+    n_layers: 8
+    n_heads: 8
