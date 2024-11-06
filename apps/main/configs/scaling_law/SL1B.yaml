@@ -4,6 +4,6 @@ include: ["apps/main/configs/scaling_law/base.yaml"]
 steps: 5000
 
 model:
-    dim: 816
-    n_layers: 10
+    dim: 1888
+    n_layers: 23
     n_heads: 16

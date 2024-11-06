@@ -18,7 +18,9 @@ distributed:
     selective_activation_checkpointing: false
     tp_size: 1
 
-
+#total_batch_size = batch_size(32) * grad_acc(1) = 32      
+#tokens_per_step = seq_len(2048) * total_batch_size(32) * NGPUs(32) = 2^11 * 2^5 *2^5 = 2^21 = 2M
+ 
 data:
     root_dir: /data/home/feiyang/feiyang/trlingua/lingua/setup/data/
     sources:
