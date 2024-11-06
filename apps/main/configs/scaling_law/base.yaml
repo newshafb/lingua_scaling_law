@@ -2,6 +2,7 @@
 
 dump_dir: /fsx-checkpoints/new/lingua_dumps/test
 name: "scaling_law"
+grad_acc_steps: 16
 probe_freq: 100
 seed: 777
 optim:
@@ -18,14 +19,14 @@ distributed:
     selective_activation_checkpointing: false
     tp_size: 1
 
-#total_batch_size = batch_size(32) * grad_acc(1) = 32      
-#tokens_per_step = seq_len(2048) * total_batch_size(32) * NGPUs(32) = 2^11 * 2^5 *2^5 = 2^21 = 2M
+#total_batch_size = batch_size(4) * grad_acc_steps(16) = 64      
+#tokens_per_step = seq_len(2048) * total_batch_size(32) * NGPUs(8) = 2^11 * 2^6 *2^3 = 2^20 = 1M
  
 data:
     root_dir: /data/home/feiyang/feiyang/trlingua/lingua/setup/data/
     sources:
         fineweb_edu_10bt_shuffled: 1.0
-    batch_size: 32
+    batch_size: 4
     prefetch_size: 64
     seq_len: 2048
     n_views: 2

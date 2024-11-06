@@ -1,7 +1,8 @@
 include: ["apps/main/configs/scaling_law/base.yaml"]
 
-#total_num_tokens = 5000 * 2M = 10B
-steps: 5000
+#total_num_tokens = steps (10_000) * total_tokens_per_step (1M) = 10B
+#NOTE: total_tokens_per_step will be affected by number of GPUs. Adjust #steps based on your number of GPUs either here or in cmdline.
+steps: 10_000
 
 model:
     dim: 816

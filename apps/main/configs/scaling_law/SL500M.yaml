@@ -1,7 +1,7 @@
 include: ["apps/main/configs/scaling_law/base.yaml"]
 
-#total_num_tokens = 5000 * 2M = 10B
-steps: 5000
+#total_num_tokens = 50_000 * 1M = 50B
+steps: 50_000
 
 model:
     dim: 1472
