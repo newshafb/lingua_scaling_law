@@ -1,15 +1,13 @@
-# Template config, need to change dump_dir, data.root_dir and tokenizer.path
-
 dump_dir: /fsx-checkpoints/new/lingua_dumps/test
 name: "scaling_law"
-grad_acc_steps: 16
+grad_acc_steps: 8
 probe_freq: 100
 seed: 777
 optim:
-    lr: 3e-4
+    lr: 3.0e-4
     warmup: 2000
     lr_min_ratio: 0.000001
-    clip: 10.0
+    clip: 1.0
 
 distributed:
     fsdp_type: full_shard
@@ -19,45 +17,67 @@ distributed:
     selective_activation_checkpointing: false
     tp_size: 1
 
-#total_batch_size = batch_size(4) * grad_acc_steps(16) = 64      
-#tokens_per_step = seq_len(2048) * total_batch_size(32) * NGPUs(8) = 2^11 * 2^6 *2^3 = 2^20 = 1M
+#local_batch_size = batch_size(4) * grad_acc_steps(8) = 32      
+#tokens_per_step = seq_len(4096) * local_batch_size(32) * NGPUs(8) = 2^12 * 2^5 *2^3 = 2^20 = 1M
  
 data:
     root_dir: /data/home/feiyang/feiyang/trlingua/lingua/setup/data/
     sources:
         fineweb_edu_10bt_shuffled: 1.0
     batch_size: 4
-    prefetch_size: 64
-    seq_len: 2048
+    prefetch_size: 1024 
+    seq_len: 4096
     n_views: 2
     load_async: true
+    add_bos: true
+    add_eos: true
     tokenizer:
-        name: sp
-        path: /data/home/feiyang/.llama/checkpoints/Llama-2-7b/tokenizer.model
+        name: tiktoken
+        path: /data/home/feiyang/.llama/checkpoints/Llama3.2-1B/tokenizer.model
 
 profiling:
     run: true
 
 checkpoint:
     dump:
-        every: 10000
-        keep: 5
+        every: 2_000
+        keep: -1
     eval:
-        every: 100
-        keep: 1
+        every: 2_000
+        keep: -1
 
 logging:
-    freq: 10
+    freq: 1
 
+async_eval_gpus: 8
 eval:
     generator:
-        max_tokens: 8192
+        max_tokens: 16384
         dtype: bf16
         temperature: 1.0
         top_p: 0.95
     harness:
-        tasks:
-            - hellaswag
-            - piqa
-            - task: nq_open
-              num_fewshot: 5
+        tasks:      
+          - task: hellaswag
+            num_fewshot: 10
+          - task: nq_open
+            num_fewshot: 5
+          - task: piqa
+            num_fewshot: 5
+          - task: social_iqa
+            num_fewshot: 5
+          - task: csatqa
+            num_fewshot: 5
+          - task: winogrande
+            num_fewshot: 5
+          - task: ai2_arc
+            num_fewshot: 25
+          - task: race
+            num_fewshot: 5
+          - task: gsm8k
+            num_fewshot: 5
+          - task: bbh
+            num_fewshot: 3
+          - task: mmlu
+            num_fewshot: 5
+ 
