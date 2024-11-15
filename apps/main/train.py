@@ -638,11 +638,14 @@ def main():
     """
     cli_args = OmegaConf.from_cli()
     file_cfg = OmegaConf.load(cli_args.config)
+    base_file_cfg = OmegaConf.load(file_cfg.include[0])
     # We remove 'config' attribute from config as the underlying DataClass does not have it
     del cli_args.config
+    # We remove 'include' attribute from config as the underlying class does not have it
+    del file_cfg.include
 
     default_cfg = OmegaConf.structured(TrainArgs())
-    cfg = OmegaConf.merge(default_cfg, file_cfg, cli_args)
+    cfg = OmegaConf.merge(default_cfg, file_cfg, base_file_cfg, cli_args)
     cfg = OmegaConf.to_object(cfg)
 
     train(cfg)
