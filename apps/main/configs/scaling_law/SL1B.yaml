@@ -1,9 +1,0 @@
-include: ["apps/main/configs/scaling_law/base.yaml"]
-
-#total_num_tokens = 100_000 * 1M = 100B
-steps: 100_000
-
-model:
-    dim: 1792
-    n_layers: 22
-    n_heads: 28
