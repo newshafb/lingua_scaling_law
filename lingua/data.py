@@ -466,7 +466,7 @@ def batch_and_shuffle_prefetched_sequences(
 
 
 def find_and_sanitize_chunks(dataset_path: str, world_size: int):
-    dataset_chunks = [str(p) for p in Path(dataset_path).glob("*.chunk.*.jsonl")]
+    dataset_chunks = [str(p) for p in Path(dataset_path).glob("*chunk.*.jsonl")]
     n_chunks = len(dataset_chunks)
 
     if n_chunks > world_size:
