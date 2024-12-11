@@ -13,9 +13,10 @@ from omegaconf import OmegaConf
 import torch
 
 from apps.main.eval import (
-    EvalArgs,
+    ValidationArgs,
     EvalHarnessLM,
     LMHarnessArgs,
+    eval_on_val,
 )
 from apps.fastRNN.generate import (
     PackedRNNGenerator,
@@ -40,6 +41,7 @@ class EvalArgs:
     ckpt_dir: str = ""
     generator: PackedRNNGeneratorArgs = field(default_factory=PackedRNNGeneratorArgs)
     harness: Optional[LMHarnessArgs] = field(default_factory=LMHarnessArgs)
+    validation: Optional[ValidationArgs] = field(default_factory=ValidationArgs)
 
     wandb: Optional[Any] = None
 
@@ -66,17 +68,24 @@ def launch_eval(cfg: EvalArgs):
     consolidate_path = str(consolidate_path)
     torch.distributed.barrier()
     logger.info("Loading model")
-    model, tokenizer = load_consolidated_model_and_tokenizer(consolidate_path)
+    model, tokenizer, train_cfg = load_consolidated_model_and_tokenizer(consolidate_path)
     logger.info("Model loaded")
     model.eval()
     generator = PackedRNNGenerator(cfg.generator, model, tokenizer)
 
     wrap = EvalHarnessLM(generator)
     results = simple_evaluate(wrap, **asdict(cfg.harness))
+    val_results =  None
+    if cfg.validation:
+        val_results = eval_on_val(generator, cfg.validation, train_cfg)
     if get_global_rank() == 0:
         with open(Path(cfg.dump_dir) / "results.json", "w") as f:
             f.write(json.dumps(results))
         logger.info(f"All evaluation results: {results['results']}")
+        if val_results is not None:
+            with open(Path(cfg.dump_dir) / "validation.json", "w") as f:
+                f.write(json.dumps(val_results))
+            logger.info(f"All validation results: {val_results}")
     if cfg.metric_log_dir and get_global_rank() == 0:
         metric_log_path = Path(cfg.metric_log_dir) / "metrics.eval.jsonl"
 
@@ -91,6 +100,15 @@ def launch_eval(cfg: EvalArgs):
             file=open(metric_log_path, mode="a"),
             flush=True,
         )
+
+        val_log_path = Path(cfg.metric_log_dir) / "metrics.validation.jsonl"
+        if val_results is not None:
+            print(
+                json.dumps(timestamp | val_results),
+                file=open(val_log_path, mode="a"),
+                flush=True,
+            )
+    
     del generator
 
 

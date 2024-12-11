@@ -1,9 +1,11 @@
 # Copyright (c) Meta Platforms, Inc. and affiliates.
 
+from collections import defaultdict
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 import json
 import logging
+import os
 from pathlib import Path
 from lm_eval.api.instance import Instance
 from lm_eval.api.model import LM
@@ -19,8 +21,10 @@ from apps.main.generate import (
 from apps.main.transformer import LMTransformer, LMTransformerArgs
 from lingua.args import dump_config
 from lingua.checkpoint import CONSOLIDATE_FOLDER, consolidate_checkpoints
+from lingua.data import init_choice_state, setup_sources
 from lingua.distributed import (
     DistributedArgs,
+    dist_mean_dict,
     get_global_rank,
     get_world_size,
     setup_torch_distributed,
@@ -56,6 +60,12 @@ class LMHarnessArgs:
     torch_random_seed: int = 1234
     fewshot_random_seed: int = 1234
 
+@dataclass
+class ValidationArgs:
+    max_steps: Optional[int] = None # If None the whole validation file is used -> /!\ This number of steps is gpu dependent (100 max steps on 8 gpus = 800 steps on 1 gpu)
+    use_val_from_train_src: bool = True # Use the validation set from training sources
+    root_dir: str = ""
+    sources: List[str] = field(default_factory=list) # Other sources to eval on
 
 @dataclass
 class EvalArgs:
@@ -67,6 +77,7 @@ class EvalArgs:
         default_factory=PackedCausalTransformerGeneratorArgs
     )
     harness: Optional[LMHarnessArgs] = field(default_factory=LMHarnessArgs)
+    validation: Optional[ValidationArgs] = field(default_factory=ValidationArgs)
 
     wandb: Optional[Any] = None
 
@@ -132,7 +143,7 @@ class EvalHarnessLM(LM):
         _, lls, greedy = self.generator.generate(inputs)
         results = []
         for p, ll, gr in zip(prompts, lls, greedy):
-            p_len = len(self.generator.tokenizer.encode(p, add_bos=True, add_eos=False))
+            p_len = len(self.generator.tokenizer.encode(p, add_bos=False, add_eos=False))
             results.append((ll[p_len:].sum().item(), gr[p_len:].all().item()))
 
         self.generator.max_gen_len = max_gen_len
@@ -150,7 +161,60 @@ class EvalHarnessLM(LM):
         self.generator.max_gen_len = max_gen_len
 
         return results
+    
 
+def eval_on_val(generator, val_args: ValidationArgs, train_cfg):
+    srcs = {}
+    for src in val_args.sources:
+        path = os.path.join(val_args.root_dir, src)
+        srcs[path] = 1.0
+    for src in train_cfg.data.sources:
+        path = os.path.join(train_cfg.data.root_dir, src)
+        srcs[path] = 1.0
+
+    multi_state = init_choice_state("", srcs, 0, get_global_rank(), get_world_size(), "*.val.jsonl")
+    path_to_iter = setup_sources(multi_state)
+
+    max_gen_len = generator.max_gen_len
+    # We temporarily lower max gen len
+    generator.max_gen_len = 1
+
+    all_val_metrics = {}
+    for src in path_to_iter:
+        jsonl_iterator = path_to_iter[src]
+        texts = []
+        logger.info(f"Running validation on {src}...")
+        for step, (content, state) in enumerate(jsonl_iterator):
+            if state['current_iter'] > 0 or (val_args.max_steps is not None and step >= val_args.max_steps):
+                break
+            content_key = "text" if ("text" in content) else "content"
+            texts.append(content[content_key])
+        
+        _, loglikelihood, _ = generator.generate(texts)
+
+        metrics = defaultdict(list)
+        for i, ll in enumerate(loglikelihood):
+            tmp = ll.sum().item()
+            metrics['nll'].append(tmp)
+            metrics['nll_per_token'].append(tmp / len(ll))
+            metrics['nll_per_char'].append(tmp / len(texts[i]))
+
+            metrics['avg_seqlen'].append(len(ll))
+        
+        for m in metrics:
+            metrics[m] = sum(metrics[m]) / len(metrics[m])
+        metrics.update(dist_mean_dict(metrics))
+        logger.info(f"Validation on {src} done. Metrics: {metrics}")
+
+        name = os.path.basename(src)
+        if name in all_val_metrics:
+            logger.warning(f"Duplicate source name {name}, path {src} in validation sources, renaming to {name}_1")
+            name = f"{name}_1"
+        all_val_metrics[name] = metrics
+
+    generator.max_gen_len = max_gen_len
+
+    return all_val_metrics
 
 def launch_eval(cfg: EvalArgs):
     if not torch.distributed.is_initialized():
@@ -172,7 +236,7 @@ def launch_eval(cfg: EvalArgs):
     consolidate_path = str(consolidate_path)
     torch.distributed.barrier()
     logger.info("Loading model")
-    model, tokenizer = load_consolidated_model_and_tokenizer(
+    model, tokenizer, train_cfg = load_consolidated_model_and_tokenizer(
         consolidate_path,
         model_cls=LMTransformer,
         model_args_cls=LMTransformerArgs,
@@ -183,10 +247,17 @@ def launch_eval(cfg: EvalArgs):
 
     wrap = EvalHarnessLM(generator)
     results = simple_evaluate(wrap, **asdict(cfg.harness))
+    val_results =  None
+    if cfg.validation:
+        val_results = eval_on_val(generator, cfg.validation, train_cfg)
     if get_global_rank() == 0:
         with open(Path(cfg.dump_dir) / "results.json", "w") as f:
             f.write(json.dumps(results))
         logger.info(f"All evaluation results: {results['results']}")
+        if val_results is not None:
+            with open(Path(cfg.dump_dir) / "validation.json", "w") as f:
+                f.write(json.dumps(val_results))
+            logger.info(f"All validation results: {val_results}")
     if cfg.metric_log_dir and get_global_rank() == 0:
         metric_log_path = Path(cfg.metric_log_dir) / "metrics.eval.jsonl"
 
@@ -201,6 +272,15 @@ def launch_eval(cfg: EvalArgs):
             file=open(metric_log_path, mode="a"),
             flush=True,
         )
+
+        val_log_path = Path(cfg.metric_log_dir) / "metrics.validation.jsonl"
+        if val_results is not None:
+            print(
+                json.dumps(timestamp | val_results),
+                file=open(val_log_path, mode="a"),
+                flush=True,
+            )
+    
     del generator
 
 

@@ -1,4 +1,4 @@
-# Template config, need to change dump_dir, data.root_dir and tokenizer.path
+# Template config, need to change dump_dir, data.root_dir and data.tokenizer.path
 
 dump_dir: /fsx-checkpoints/new/lingua_dumps/test
 name: "debug"
@@ -67,3 +67,5 @@ eval:
             - piqa
             - task: nq_open
               num_fewshot: 5
+    validation:
+        max_steps: 100

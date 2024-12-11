@@ -90,8 +90,6 @@ class LMTransformer(BaseTransformer):
                 )
             )
 
-        self.init_weights()
-
     def forward(
         self,
         token_values: torch.Tensor,

@@ -66,3 +66,5 @@ eval:
             - piqa
             - task: nq_open
               num_fewshot: 5
+    validation:
+        max_steps: 100

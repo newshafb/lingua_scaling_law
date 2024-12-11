@@ -55,7 +55,7 @@ def load_consolidated_model_and_tokenizer(consolidated_path):
     model = model.cuda().eval()
     for param in model.parameters():
         param.data = param.data.to(dtype=param_dtype)
-    return model, tokenizer
+    return model, tokenizer, config
 
 
 class StateCache(nn.Module):
@@ -120,6 +120,7 @@ class PackedRNNGenerator(PackedCausalTransformerGenerator):
         self.dtype = dict(fp32=torch.float32, bf16=torch.bfloat16)[cfg.dtype]
 
         self.cu_seqlens = None
+        self.tok_idx = None
 
     def clear_cache(self, lengths: torch.Tensor):
         for module in self.model.modules():
@@ -143,6 +144,9 @@ class PackedRNNGenerator(PackedCausalTransformerGenerator):
             [torch.tensor([0], device=self.device), self.cu_seqlens]
         ).int()
 
+        self.tok_idx = torch.repeat_interleave(lengths).int().unsqueeze(0).to(self.device)
+
+
     @torch.compiler.disable
     def setup_generation(self, lengths):
         pass
@@ -151,6 +155,7 @@ class PackedRNNGenerator(PackedCausalTransformerGenerator):
         self.setup_prefilling(lengths=lengths)
         prefill_out = self.model.forward(
             tokens,
+            tok_idx=self.tok_idx,
             cu_seqlens=self.cu_seqlens,
             impl="parallel",
         )
@@ -175,7 +180,7 @@ def main():
     gen_cfg = dataclass_from_dict(PackedRNNGeneratorArgs, cfg, strict=False)
     print(cfg)
 
-    model, tokenizer = load_consolidated_model_and_tokenizer(cfg.ckpt)
+    model, tokenizer, _ = load_consolidated_model_and_tokenizer(cfg.ckpt)
 
     generator = PackedRNNGenerator(gen_cfg, model, tokenizer)
 

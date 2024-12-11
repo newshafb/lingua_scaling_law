@@ -109,8 +109,10 @@ def maybe_run_profiler(dump_dir, module, config: ProfilerArgs):
 
         logger.info(f"Profiling active.  Traces will be saved at {trace_dir}")
 
-        if not os.path.exists(trace_dir):
-            os.makedirs(trace_dir, exist_ok=True)
+        if get_is_master() and not os.path.exists(trace_dir):
+            os.makedirs(trace_dir)
+        if torch.distributed.is_initialized():
+            torch.distributed.barrier()
 
         with xformers.profiler.profile(
             output_dir=trace_dir,

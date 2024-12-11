@@ -195,7 +195,7 @@ class PackedCausalTransformerGenerator:
                     module.kv_cache = KVCache(
                         1,
                         self.max_tokens,
-                        module.n_heads,
+                        module.n_kv_heads,
                         module.head_dim,
                         self.dtype,
                         self.device,
@@ -420,7 +420,7 @@ def load_consolidated_model_and_tokenizer(
     model = model.cuda().eval()
     for param in model.parameters():
         param.data = param.data.to(dtype=param_dtype)
-    return model, tokenizer
+    return model, tokenizer, config
 
 
 def main():
@@ -431,7 +431,7 @@ def main():
     )
     print(cfg)
 
-    model, tokenizer = load_consolidated_model_and_tokenizer(cfg.ckpt)
+    model, tokenizer, _ = load_consolidated_model_and_tokenizer(cfg.ckpt)
 
     generator = PackedCausalTransformerGenerator(gen_cfg, model, tokenizer)
 

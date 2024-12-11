@@ -75,7 +75,7 @@ def setup_terashuf(work_dir):
     return terashuf_dir
 
 
-def main(dataset, memory, data_dir, seed=42):
+def main(dataset, memory, data_dir, seed=42, nchunks=32):
     # Configuration
     repo_id = {
         "fineweb_edu": "HuggingFaceFW/fineweb-edu",
@@ -107,7 +107,6 @@ def main(dataset, memory, data_dir, seed=42):
         "dclm_baseline_1.0_10prct": "global-shard_01_of_10/*.jsonl.zst",
     }[dataset]
     suffix = ".jsonl"
-    nchunks = 32
     k_validation = 10000  # Number of lines to take from each chunk for validation
 
     # Setup terashuf
@@ -148,7 +147,8 @@ if __name__ == "__main__":
     parser.add_argument("memory", type=float, default=8)
     parser.add_argument("--data_dir", type=str, default="data")
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--nchunks", type=int, default=32)
 
     args = parser.parse_args()
 
-    main(args.dataset, args.memory, args.data_dir, args.seed)
+    main(args.dataset, args.memory, args.data_dir, args.seed, args.nchunks)

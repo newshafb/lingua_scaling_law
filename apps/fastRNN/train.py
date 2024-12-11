@@ -24,7 +24,7 @@ from torch.distributed.checkpoint.stateful import Stateful
 from torch.distributed._tensor import DTensor
 
 from lingua.args import dataclass_from_dict, dump_config, flatten_dict
-from lingua.checkpoint import CheckpointArgs, CheckpointManager
+from lingua.checkpoint import CheckpointArgs, CheckpointManager, load_from_checkpoint
 from lingua.data import (
     DataArgs,
     PackTokensState,
@@ -292,8 +292,8 @@ def train(args: TrainArgs):
         # which will silently fail (give nan gradients for example)
 
         if args.checkpoint.init_ckpt_path:
-            st_dict = torch.load(args.checkpoint.init_ckpt_path)
-            model.load_state_dict(st_dict)
+            logger.info(f"Loading initial model from {args.checkpoint.init_ckpt_path}")
+            load_from_checkpoint(args.checkpoint.init_ckpt_path, model, model_key="model") # Put model_key="" if its directly the model checkpoint
         else:
             with torch.random.fork_rng(devices=[torch.cuda.current_device()]):
                 torch.manual_seed(args.model.seed)
@@ -324,7 +324,7 @@ def train(args: TrainArgs):
             scheduler=scheduler,
         )
 
-        checkpoint = CheckpointManager(args.checkpoint)
+        checkpoint = CheckpointManager.instantiate_and_make_dir(args.checkpoint)
         checkpoint.load(model, optimizer, train_state, world_mesh)
         # Either load from latest checkpoint or start from scratch
         if args.probe_freq is not None:
@@ -579,7 +579,7 @@ def train(args: TrainArgs):
                         launch_job(
                             StoolArgs(
                                 asdict(eval_args),
-                                script="apps.fastRNN.internal",
+                                script="apps.fastRNN.eval",
                                 copy_code=False,
                                 nodes=args.async_eval_gpus // 8,
                                 qos="lowest",

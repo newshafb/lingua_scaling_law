@@ -92,7 +92,7 @@ class RGLRU(nn.Module):
         self.a_gate = nn.Linear(n_heads * head_dim, dim, bias=False)
 
     def forward(
-        self, x: torch.Tensor, cu_seqlens: torch.Tensor, impl: str = "parallel"
+        self, x: torch.Tensor, tok_idx: torch.Tensor, cu_seqlens: torch.Tensor, impl: str = "parallel"
     ) -> torch.Tensor:
         bsz, seqlen, _ = x.shape
 
@@ -101,6 +101,7 @@ class RGLRU(nn.Module):
             x = conv1d(
                 x=x.transpose(1, 2),
                 conv_weight=conv1d_w,
+                tok_idx=tok_idx,
                 cu_seqlens=cu_seqlens,
                 impl=impl,
                 cache=self.cache.conv_cache if hasattr(self, "cache") else None,
@@ -210,9 +211,9 @@ class RGLRUBlock(nn.Module):
         )
 
     def forward(
-        self, x: torch.Tensor, cu_seqlens: torch.Tensor, impl: str = "parallel"
+        self, x: torch.Tensor, tok_idx: torch.Tensor, cu_seqlens: torch.Tensor, impl: str = "parallel"
     ) -> torch.Tensor:
-        h = self.rglru(self.wx(x), cu_seqlens=cu_seqlens, impl=impl)
+        h = self.rglru(self.wx(x), tok_idx=tok_idx, cu_seqlens=cu_seqlens, impl=impl)
         h = h * F.silu(self.wy(x))
         y = x + self.wo(h)
 
@@ -260,9 +261,9 @@ class HawkBlock(nn.Module):
         self.ffn_norm = RMSNorm(args.dim, eps=args.norm_eps)
 
     def forward(
-        self, x: torch.Tensor, cu_seqlens: torch.Tensor, impl: str = "parallel"
+        self, x: torch.Tensor, tok_idx: torch.Tensor, cu_seqlens: torch.Tensor, impl: str = "parallel"
     ) -> torch.Tensor:
-        x = x + self.rlgru_block(self.rlgru_norm(x), cu_seqlens=cu_seqlens, impl=impl)
+        x = x + self.rlgru_block(self.rlgru_norm(x), tok_idx=tok_idx, cu_seqlens=cu_seqlens, impl=impl)
         x = x + self.feed_forward(self.ffn_norm(x))
         return x
 
@@ -286,10 +287,10 @@ class BaseHawk(nn.Module):
             self.layers.append(HawkBlock(args))
 
     def forward(
-        self, h: torch.Tensor, cu_seqlens: torch.Tensor, impl: str = "parallel"
+        self, h: torch.Tensor, tok_idx: torch.Tensor, cu_seqlens: torch.Tensor, impl: str = "parallel"
     ) -> torch.Tensor:
         for i, layer in enumerate(self.layers):
-            h = layer(h, cu_seqlens=cu_seqlens, impl=impl)
+            h = layer(h, tok_idx=tok_idx, cu_seqlens=cu_seqlens, impl=impl)
         return h
 
     def reset_parameters(self):

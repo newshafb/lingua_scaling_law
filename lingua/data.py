@@ -59,6 +59,7 @@ build_seperate_token_packing_dataloader does the same thing but swaps step 2 and
 Both can be called with a resume_state to resume from any given position deterministically
 """
 
+TRAIN_DATA_FILE_PATTERN = "*chunk.*.jsonl"
 
 class JSONLState(TypedDict):
     """Represents the current state of a JSON line reader.
@@ -69,7 +70,7 @@ class JSONLState(TypedDict):
         position (int): The file position after reading the line (in bytes).
         window (int): The window size used for iteration.
         offset (int): The offset used for iteration.
-        n_iter (Optional[int]): Number of iterations over the jsonl file (for infinite iteration).
+        current_iter (Optional[int]): Number of iterations over the jsonl file (for infinite iteration).
     """
 
     file_path: str
@@ -465,8 +466,8 @@ def batch_and_shuffle_prefetched_sequences(
         idx = (idx + 1) % prefetch_size
 
 
-def find_and_sanitize_chunks(dataset_path: str, world_size: int):
-    dataset_chunks = [str(p) for p in Path(dataset_path).glob("*chunk.*.jsonl")]
+def find_and_sanitize_chunks(dataset_path: str, world_size: int, file_pattern: str = TRAIN_DATA_FILE_PATTERN):
+    dataset_chunks = [str(p) for p in Path(dataset_path).glob(file_pattern)]
     n_chunks = len(dataset_chunks)
 
     if n_chunks > world_size:
@@ -482,14 +483,14 @@ def find_and_sanitize_chunks(dataset_path: str, world_size: int):
     return dataset_chunks
 
 
-def distribute_data_to_rank(dataset_path: str, rank: int, world_size: int):
+def distribute_data_to_rank(dataset_path: str, rank: int, world_size: int, file_pattern: str):
     """
     Distributes the chunk files in a dataset path to each worker.
     If world_size is smaller than the number of chunks, the extra chunks are discarded.
     Otherwise, world_size is assumed to be a multiple of number of chunks.
     In that case there are world_size//nb_chunks workers on each chunk file, reading with different offsets.
     """
-    dataset_chunks = find_and_sanitize_chunks(dataset_path, world_size)
+    dataset_chunks = find_and_sanitize_chunks(dataset_path, world_size, file_pattern)
     n_ranks_per_chunk = world_size // len(dataset_chunks)
     rank_to_jsonl_iterator_params = []
     for chunk_path in dataset_chunks:
@@ -513,11 +514,12 @@ def init_choice_state(
     seed: int,
     rank: int,
     world_size: int,
+    file_pattern: str,
 ):
     data_path_to_jsonl_state = dict()
     for dataset_path in sources:
         jsonl_state = distribute_data_to_rank(
-            os.path.join(root_dir, dataset_path), rank, world_size
+            os.path.join(root_dir, dataset_path), rank, world_size, file_pattern
         )
         data_path_to_jsonl_state[dataset_path] = jsonl_state
 
@@ -548,9 +550,10 @@ def init_state(
     add_eos: bool,
     tokenizer_name: str,
     tokenizer_path: Optional[str] = None,
+    file_pattern: str = TRAIN_DATA_FILE_PATTERN
 ):
     multi_choice_state = init_choice_state(
-        root_dir=root_dir, sources=sources, seed=seed, rank=rank, world_size=world_size
+        root_dir=root_dir, sources=sources, seed=seed, rank=rank, world_size=world_size, file_pattern=file_pattern
     )
     tokenizer_state = TokenizerState(
         it_state=multi_choice_state,

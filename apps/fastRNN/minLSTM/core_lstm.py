@@ -90,7 +90,7 @@ class LSTM(nn.Module):
         )
 
     def forward(
-        self, x: torch.Tensor, cu_seqlens: torch.Tensor, impl: str = "parallel"
+        self, x: torch.Tensor, tok_idx: torch.Tensor, cu_seqlens: torch.Tensor, impl: str = "parallel"
     ) -> torch.Tensor:
         bsz, seq_len, _ = x.shape
 
@@ -104,6 +104,7 @@ class LSTM(nn.Module):
             fi = conv1d(
                 x=fi,
                 conv_weight=conv1d_w,
+                tok_idx=tok_idx,
                 cu_seqlens=cu_seqlens,
                 impl=impl,
                 cache=self.cache.conv_cache if hasattr(self, "cache") else None,
@@ -136,10 +137,9 @@ class LSTM(nn.Module):
     def reset_parameters(self, init_std, factor):
         in_init_std = init_std or (self.dim ** (-0.5))
         out_init_std = init_std or (self.hidden_dim ** (-0.5))
-        in_init_std = in_init_std / factor
         out_init_std = out_init_std / factor
 
-        for w in [self.wfi, self.wh_tilde]:
+        for w in [self.w, self.wfi, self.wh_tilde]:
             nn.init.trunc_normal_(
                 w.weight, std=in_init_std, a=-3 * in_init_std, b=3 * in_init_std
             )
@@ -174,9 +174,9 @@ class LSTMBlock(nn.Module):
         )
 
     def forward(
-        self, x: torch.Tensor, cu_seqlens: torch.Tensor, impl: str = "parallel"
+        self, x: torch.Tensor, tok_idx: torch.Tensor, cu_seqlens: torch.Tensor, impl: str = "parallel"
     ) -> torch.Tensor:
-        x = x + self.lstm(self.lstm_norm(x), cu_seqlens=cu_seqlens, impl=impl)
+        x = x + self.lstm(self.lstm_norm(x), tok_idx=tok_idx, cu_seqlens=cu_seqlens, impl=impl)
         return x
 
     def init_weights(self, init_std: Optional[float], factor: InitStdFactor):
@@ -197,10 +197,10 @@ class BaseMinLSTM(nn.Module):
             self.layers.append(LSTMBlock(args))
 
     def forward(
-        self, x: torch.Tensor, cu_seqlens: torch.Tensor, impl: str = "parallel"
+        self, x: torch.Tensor, tok_idx: torch.Tensor, cu_seqlens: torch.Tensor, impl: str = "parallel"
     ) -> torch.Tensor:
         for layer in self.layers:
-            x = layer(x, cu_seqlens=cu_seqlens, impl=impl)
+            x = layer(x, tok_idx=tok_idx, cu_seqlens=cu_seqlens, impl=impl)
         return x
 
     def reset_parameters(self):

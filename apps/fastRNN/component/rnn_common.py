@@ -18,6 +18,7 @@ from accelerated_scan.ref import scan as ref_scan
 def conv1d(
     x: torch.Tensor,
     conv_weight: torch.Tensor,
+    tok_idx: torch.Tensor,
     cu_seqlens: torch.Tensor,
     impl: str = "parallel",
     cache=None,
@@ -33,6 +34,7 @@ def conv1d(
             x=x,
             weight=conv_weight,
             bias=None,
+            seq_idx=tok_idx,
             activation="silu",
         )
 
@@ -48,6 +50,11 @@ def conv1d(
             .transpose(0, 1)
             .unsqueeze(0)
         )
+
+    else:
+        raise NotImplementedError(
+                f"causal_conv1d implementation {impl} not supported"
+            )
 
     return x
 

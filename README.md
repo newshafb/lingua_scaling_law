@@ -26,9 +26,9 @@ Once that is done your can activate the environment
 conda activate lingua_<date>
 ```
 use the provided script to download and prepare data from huggingface (among `fineweb_edu`, `fineweb_edu_10bt`, or `dclm_baseline_1.0`).
-This command will download the `fineweb_edu` and prepare it for training in the `./data` directory, specifying the amount of memory `terashuf` (the tool used to shuffle samples) will be allocated.
+This command will download the `fineweb_edu` and prepare it for training in the `./data` directory, specifying the amount of memory `terashuf` (the tool used to shuffle samples) will be allocated. By default, the number of chunks (`nchunks`) is 32. If you are running on fewer than 32 GPUs, it is recommended to set `nchunks` to 1 or to match `nchunks` with the number of GPUs (`nchunks` = NGPUs). See [here](https://github.com/facebookresearch/lingua/issues/55#issuecomment-2483643076) for more details.
 ```bash
-python setup/download_prepare_hf_data.py fineweb_edu <MEMORY> --data_dir ./data --seed 42
+python setup/download_prepare_hf_data.py fineweb_edu <MEMORY> --data_dir ./data --seed 42 --nchunks <NCHUNKS>
 ```
 to download tokenizer (here llama3), use the folowing script:
 ```bash
@@ -43,6 +43,11 @@ python -m lingua.stool script=apps.main.train config=apps/main/configs/debug.yam
 torchrun --nproc-per-node 8 -m apps.main.train config=apps/main/configs/debug.yaml
 # or you can also launch on 1 GPU
 python -m apps.main.train config=apps/main/configs/debug.yaml
+```
+
+When using `stool`, if a job crashes, it can be relaunched using sbatch:
+```bash
+sbatch path/to/dump_dir/submit.slurm
 ```
 ## Training Results 
 

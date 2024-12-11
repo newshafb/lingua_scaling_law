@@ -96,7 +96,7 @@ class GRU(nn.Module):
         )
 
     def forward(
-        self, x: torch.Tensor, cu_seqlens: torch.Tensor, impl: str = "parallel"
+        self, x: torch.Tensor, tok_idx: torch.Tensor, cu_seqlens: torch.Tensor, impl: str = "parallel"
     ) -> torch.Tensor:
         bsz, seq_len, _ = x.shape
 
@@ -113,6 +113,7 @@ class GRU(nn.Module):
             z = conv1d(
                 x=z,
                 conv_weight=conv1d_w,
+                tok_idx=tok_idx,
                 cu_seqlens=cu_seqlens,
                 impl=impl,
                 cache=self.cache.conv_cache if hasattr(self, "cache") else None,
@@ -143,10 +144,9 @@ class GRU(nn.Module):
     def reset_parameters(self, init_std, factor):
         in_init_std = init_std or (self.dim ** (-0.5))
         out_init_std = init_std or (self.hidden_dim ** (-0.5))
-        in_init_std = in_init_std / factor
         out_init_std = out_init_std / factor
 
-        for w in [self.wz, self.wh_tilde]:
+        for w in [self.w, self.wz, self.wh_tilde]:
             nn.init.trunc_normal_(
                 w.weight, std=in_init_std, a=-3 * in_init_std, b=3 * in_init_std
             )
@@ -177,9 +177,9 @@ class GRUBlock(nn.Module):
         )
 
     def forward(
-        self, x: torch.Tensor, cu_seqlens: torch.Tensor, impl: str = "parallel"
+        self, x: torch.Tensor, tok_idx: torch.Tensor, cu_seqlens: torch.Tensor, impl: str = "parallel"
     ) -> torch.Tensor:
-        x = x + self.gru(self.gru_norm(x), cu_seqlens=cu_seqlens, impl=impl)
+        x = x + self.gru(self.gru_norm(x), tok_idx=tok_idx, cu_seqlens=cu_seqlens, impl=impl)
         return x
 
     def init_weights(self, init_std: Optional[float], factor: InitStdFactor):
@@ -200,10 +200,10 @@ class BaseMinGRU(nn.Module):
             self.layers.append(GRUBlock(args))
 
     def forward(
-        self, h: torch.Tensor, cu_seqlens: torch.Tensor, impl: str = "parallel"
+        self, h: torch.Tensor, tok_idx: torch.Tensor, cu_seqlens: torch.Tensor, impl: str = "parallel"
     ) -> torch.Tensor:
         for i, layer in enumerate(self.layers):
-            h = layer(h, cu_seqlens=cu_seqlens, impl=impl)
+            h = layer(h, tok_idx=tok_idx, cu_seqlens=cu_seqlens, impl=impl)
         return h
 
     def reset_parameters(self):

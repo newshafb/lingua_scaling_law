@@ -91,8 +91,6 @@ class LMTransformer(BaseTransformer):
         if args.weight_tying:
             self.output.weight = self.embeddings.tok_embeddings.weight
 
-        self.init_weights()
-
     def forward(
         self,
         token_values: torch.Tensor,

@@ -66,18 +66,30 @@ eval:
   harness:
     tasks:
       - hellaswag
-      - nq_open
+      - task: boolq
+        dataset_kwargs:
+          trust_remote_code: true
       - piqa
-      - siqa
-      - csatqa
+      - task: social_iqa
+        dataset_kwargs:
+          trust_remote_code: true
       - winogrande
-      - arc
+      - openbookqa
+      - arc_easy
+      - arc_challenge
       - race
-      - gsm8k
-      - bbh
+      - commonsense_qa
+      # - coqa
+      - copa
       - mmlu
+      - mmlu_pro
+      # - task: nq_open
+      #   num_fewshot: 5
+      # - triviaqa
+      # - gsm8k
+      # - bbh
+  validation:
+    max_steps: 1000
   generator:
-    max_tokens: 16384
+    max_tokens: 8192
     dtype: bf16
-
-  mp_size: 1
