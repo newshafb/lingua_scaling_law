@@ -30,8 +30,8 @@ class StoolArgs:
     constraint: str = ""  # The constraint on the nodes.
     exclude: str = ""  # The nodes to exclude.
     time: int = -1  # The time limit of the job (in minutes).
-    account: str = ""
-    qos: str = ""
+    account: str = "atom"
+    qos: str = "atom_high"
     partition: str = "learn"
     stdout: bool = False
 
@@ -78,6 +78,7 @@ def copy_dir(input_dir: str, output_dir: str) -> None:
         f"rsync -arm --copy-links "
         f"--include '**/' "
         f"--include '*.py' "
+        f"--include '*.yaml' "
         f"--exclude='*' "
         f"{input_dir}/ {output_dir}"
     )
@@ -233,6 +234,8 @@ if __name__ == "__main__":
     or just name=tictac for top level attributes.
     """
     args = OmegaConf.from_cli()
-    args.config = OmegaConf.load(args.config)
+    file_cfg = OmegaConf.load(args.config)
+    include_cfg = OmegaConf.load(file_cfg.include[0]) 
+    args.config = OmegaConf.merge(file_cfg, include_cfg)
     args = dataclass_from_dict(StoolArgs, args)
     launch_job(args)
