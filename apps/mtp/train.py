@@ -126,7 +126,7 @@ class TrainState(Stateful):
 
 def validate_train_args(args: TrainArgs, output_size: int):
     if args.model.vocab_size < 0:
-        logger.info(f"Setting model output size to {args.model.vocab_size}")
+        logger.info(f"Setting model output size to {output_size}")
         args.model.vocab_size = output_size
     assert (
         args.model.vocab_size == output_size
@@ -135,7 +135,7 @@ def validate_train_args(args: TrainArgs, output_size: int):
     assert args.dump_dir, "Dump dir not set"
 
     if args.checkpoint.path is None:
-        logger.info(f"Setting checkpoint path to {args.checkpoint.path}")
+        logger.info(f"Setting checkpoint path to {str(Path(args.dump_dir) / "checkpoints")}")
         args.checkpoint.path = str(Path(args.dump_dir) / "checkpoints")
 
     for source in args.data.sources:
@@ -240,7 +240,7 @@ def train(args: TrainArgs):
         dp_degree = dp_mesh.size()
         dp_rank = dp_mesh.get_local_rank()
         if args.distributed.dp_shard > 1:
-            dp_rank = dp_rank * dp_degree + world_mesh["dp_shard"].get_local_rank()
+            dp_rank = dp_rank * world_mesh["dp_shard"].size() + world_mesh["dp_shard"].get_local_rank()
             dp_degree *= world_mesh["dp_shard"].size()
 
         logger.info(f"Running on dp rank : {dp_rank}")
@@ -322,7 +322,6 @@ def train(args: TrainArgs):
                     else None
                 ),
             )
-            probe_mod = model._orig_mod if args.distributed.compile else model
 
         gc.disable()
 
@@ -387,7 +386,7 @@ def train(args: TrainArgs):
                 # batch size to avoid OOM
                 # This assumes the model has no stateful layers (batch norm..)
                 assert (
-                    next(probe_mod.parameters()).grad is None
+                    next(model.parameters()).grad is None
                 ), "Can't probe model if grads are not reset"
 
                 with probe:
@@ -400,7 +399,7 @@ def train(args: TrainArgs):
                     # So we divide bsz by 2 or seqlen by 2
                     probe_bsz = max(1, bsz // 2)
                     probe_seq = seqlen if (bsz // 2 >= 1) else (seqlen // 2)
-                    probe_loss = probe_mod(
+                    probe_loss = model(
                         input_ids[:probe_bsz, :probe_seq],
                         labels[:probe_bsz, :probe_seq],
                     )
@@ -409,10 +408,13 @@ def train(args: TrainArgs):
                     optimizer.zero_grad()
 
                 assert (
-                    next(probe_mod.parameters()).grad is None
+                    next(model.parameters()).grad is None
                 ), "Probe model shouldn't have grads at this point"
 
             losses = model(input_ids, labels)
+
+            if args.grad_acc_steps > 1:
+                model.set_requires_gradient_sync(train_state.acc_step == 0)
 
             # We scale loss with grad_acc_steps so the gradient is the same
             # regardless of grad_acc_steps
@@ -422,16 +424,17 @@ def train(args: TrainArgs):
             # For logging we undo that scaling
             loss = loss.detach() * args.grad_acc_steps
 
-            grad_norm = torch.nn.utils.clip_grad_norm_(
-                model.parameters(), max_norm=args.optim.clip, foreach=True
-            )
-
-            grad_norm = (
-                grad_norm.full_tensor() if isinstance(grad_norm, DTensor) else grad_norm
-            ).item()
-
             # optimizer step
+            grad_norm = -1.0
             if train_state.acc_step == 0:
+                grad_norm = torch.nn.utils.clip_grad_norm_(
+                    model.parameters(), max_norm=args.optim.clip, foreach=True
+                )
+
+                grad_norm = (
+                    grad_norm.full_tensor() if isinstance(grad_norm, DTensor) else grad_norm
+                ).item()
+
                 optimizer.step()
                 scheduler.step()
                 optimizer.zero_grad()

@@ -318,11 +318,11 @@ python -m lingua.stool script=apps.main.eval config=apps/main/configs/eval.yaml 
 
 ## Related repositories
 
-Here we highlight some related work that is complementary to this one. Most important being [torchtitan](https://github.com/pytorch/torchtitan) and [torchtune](https://github.com/pytorch/torchtune). 
+Here we highlight some related work that is complementary to this one. Most important being [torchtitan](https://github.com/pytorch/torchtitan), [torchtune](https://github.com/pytorch/torchtune) and [fairseq2](https://github.com/facebookresearch/fairseq2). 
 
 Lingua is designed for researchers who want to experiment with new ideas for LLM pretraining and get quick feedback on both training/inference speed and downstream benchmarks. Our goal is to lower the barrier to entry for LLM research by providing a lightweight and focused codebase.
 
-We see torchtitan, torchtune, and lingua as complementary tools. Torchtitan is excellent for large-scale work because it features 3D parallelism and is likely to integrate the latest PyTorch distributed training features more quickly, thanks to its close ties to the PyTorch team. On the other hand, Torchtune excels at fine-tuning, especially when GPU resources are limited, by offering various fine-tuning strategies like LoRA, QLoRA, DPO, and PPO.
+We see torchtitan, torchtune, lingua and fairseq2 as complementary tools. Torchtitan is excellent for large-scale work because it features 3D parallelism and is likely to integrate the latest PyTorch distributed training features more quickly, thanks to its close ties to the PyTorch team. On the other hand, Torchtune excels at fine-tuning, especially when GPU resources are limited, by offering various fine-tuning strategies like LoRA, QLoRA, DPO, and PPO. Fairseq2 is a FAIR project for sequence modeling with multi-modal capabilities that provides various LLM training recipes, multi-GPU support with data and model parallelism, and efficient data processing for speech and multilingual content.
 
 A typical workflow could look like this: you might first test a new idea in Lingua, then scale it up further with Torchtitan, and finally use Torchtune for instruction or preference fine-tuning.
 
