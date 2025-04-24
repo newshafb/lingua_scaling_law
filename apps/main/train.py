@@ -548,6 +548,7 @@ def train(args: TrainArgs):
                 eval_args = dataclass_from_dict(EvalArgs, args.eval)
 
                 eval_args.global_step = train_state.step
+                eval_args.name = f"eval_{args.name}"
                 eval_args.ckpt_dir = str(checkpoint.existing_saves[-1])
                 eval_args.dump_dir = str(
                     os.path.join(
@@ -569,9 +570,10 @@ def train(args: TrainArgs):
                             StoolArgs(
                                 asdict(eval_args),
                                 script="apps.main.eval",
-                                copy_code=False,
+                                copy_code=True,
                                 nodes=args.async_eval_gpus // 8,
-                                qos="lowest",
+                                account="data",
+                                qos="data_high",
                             )
                         )
 

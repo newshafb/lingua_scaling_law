@@ -170,7 +170,7 @@ def read_jsonl(
         offset=offset,
         current_iter=current_iter,
     )
-    with open(file_path, "r") as file:
+    with open(file_path, "r", encoding='utf-8') as file:
         file.seek(position)
         while line := file.readline():
             current_line += 1
@@ -198,6 +198,7 @@ def loop_on_jsonl(
     try:
         while True:
             it = read_jsonl(file_path, position, block_size, offset, current_iter)
+            print(f"loop_on_jsonl: {file_path}")
             for content, jsonl_state in it:
                 yield content, jsonl_state
             current_iter += 1
@@ -228,9 +229,9 @@ def tokenize(
     tokenizer = build_tokenizer(name=tokenizer_type, path=tokenizer_path)
     for content, state in iterator:
         assert (
-            "text" in content or "content" in content
-        ), "JSON line must contain either text or content key"
-        content_key = "text" if ("text" in content) else "content"
+            "text" in content or "content" in content or "raw_content" in content
+        ), "JSON line must contain either text or content or raw_content key"
+        content_key = "text" if ("text" in content) else ("raw_content" if "raw_content" in content else "content")
         text = content[content_key]
         tokens = tokenizer.encode(text, add_bos=add_bos, add_eos=add_eos)
         yield tokens, TokenizerState(
@@ -467,6 +468,16 @@ def batch_and_shuffle_prefetched_sequences(
 
 
 def find_and_sanitize_chunks(dataset_path: str, world_size: int, file_pattern: str = TRAIN_DATA_FILE_PATTERN):
+    print("-----------------------")
+    print("-----------------------")
+    print("-----------------------")
+    print("-----------------------")
+    print("-----------------------")
+    print("-----------------------")
+    print("-----------------------")
+    print(dataset_path)
+    print(file_pattern)
+    print('\n\n\n\n')
     dataset_chunks = [str(p) for p in Path(dataset_path).glob(file_pattern)]
     n_chunks = len(dataset_chunks)
 
@@ -586,6 +597,7 @@ def init_state(
 def setup_sources(multi_state):
     path_to_iter = dict()
     for source in multi_state["sources"]:
+        print(f"in setup_sources at data.py: {source}")
         jsonl_state = multi_state["source_to_state"][source]
         path_to_iter[source] = loop_on_jsonl(
             jsonl_state["file_path"],

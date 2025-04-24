@@ -25,10 +25,10 @@ def get_num_params(model: nn.Module) -> int:
     return sum(numel.values())
 
 def pprint(n: int) -> str:
-    return ",".join([str(n)[::-1][i : i + 3] for i in range(0, len(str(n)), 3)])[::-1]
+    return "_".join([str(n)[::-1][i : i + 3] for i in range(0, len(str(n)), 3)])[::-1]
 
 
-def size(args):
+def size(args, include_embedding=False):
     tokenizer = build_tokenizer(args.data.tokenizer.name, args.data.tokenizer.path)
     output_size = tokenizer.n_words
     if args.model.vocab_size < 0:
@@ -46,7 +46,10 @@ def size(args):
     n_layers = args.model.n_layers
     n_heads = args.model.n_heads
 
-    print(f"Number of params (dim={dim}, n_layers={n_layers}, n_heads={n_heads}): {pprint(num_non_embed_params)}")
+    if include_embedding:
+        print(f"Number of params w/ embedding (dim={dim}, n_layers={n_layers}, n_heads={n_heads}): {pprint(n_params)}")
+    else:
+        print(f"Number of params w/o embedding (dim={dim}, n_layers={n_layers}, n_heads={n_heads}): {pprint(num_non_embed_params)}")
 
 def main():
     """
@@ -96,7 +99,7 @@ def main():
     cfg = OmegaConf.merge(default_cfg, file_cfg, cli_args)
     cfg = OmegaConf.to_object(cfg)
 
-    size(cfg)
+    size(cfg, True)
 
 
 if __name__ == "__main__":

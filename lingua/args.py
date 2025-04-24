@@ -42,6 +42,10 @@ def dataclass_from_dict(cls: Type[T], data: dict, strict: bool = True) -> T:
     base = OmegaConf.structured(cls())
     OmegaConf.set_struct(base, strict)
     override = OmegaConf.create(data)
+
+    print(OmegaConf.to_yaml(base))
+    print(OmegaConf.to_yaml(override))
+    
     return OmegaConf.to_object(OmegaConf.merge(base, override))
 
 

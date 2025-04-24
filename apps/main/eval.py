@@ -29,6 +29,7 @@ from lingua.distributed import (
     get_world_size,
     setup_torch_distributed,
 )
+import numpy as np
 
 EVAL_FOLDER_NAME = "{:010d}"
 
@@ -114,25 +115,38 @@ class EvalHarnessLM(LM):
         self.device = generator.device
 
     def generate_until(self, requests: List[Instance]) -> List[str]:
-        prompts, gen_args = zip(*[req.args for req in requests])
-        assert all_dicts_same(gen_args), "Doesn't support different gen args for now"
-        gen_args = gen_args[0]
-        temperature = gen_args.get("temperature", 0.0)
-        top_p = gen_args.get("top_p", None)
-        top_k = gen_args.get("top_k", None)
-        until = gen_args.get("until", [])
 
-        self.generator.temperature = temperature
-        self.generator.top_p = top_p
-        self.generator.top_k = top_k
-        self.generator.until = until
-        generations, _, _ = self.generator.generate(prompts)
+        prompts, gen_args = zip(*[req.args for req in requests])
+
+        grouped_data = defaultdict(list)
+        for idx, arg in enumerate(gen_args):
+            arg_key = json.dumps(arg)
+            grouped_data[arg_key].append(idx)
+
+        grouped_data = dict(grouped_data)
         filtered_gen = []
-        for g in generations:
-            for e in until:
-                g = g.replace(e, "")
-            filtered_gen.append(g)
+        for arg_key, idx in grouped_data.items():
+            prompt=tuple(np.array(prompts)[idx].tolist())
+            gen_args = json.loads(arg_key)
+            max_gen_len = gen_args.get("max_gen_toks", self.generator.max_gen_len)
+            temperature = gen_args.get("temperature", self.generator.temperature)
+            top_p = gen_args.get("top_p", self.generator.top_p)
+            top_k = gen_args.get("top_k", self.generator.top_k)
+            until = gen_args.get("until", self.generator.until)
+
+            #self.generator.max_gen_len = max_gen_len
+            self.generator.temperature = temperature
+            self.generator.top_p = top_p
+            self.generator.top_k = top_k
+            self.generator.until = until
+
+            generations, _, _ = self.generator.generate(prompt)
+            for g in generations:
+                for e in until:
+                    g = g.replace(e, "")
+                filtered_gen.append(g)
         return filtered_gen
+
 
     def loglikelihood(self, requests: List[Instance]) -> List[Tuple[float, bool]]:
         prompts, continuations = zip(*[req.args for req in requests])
@@ -163,16 +177,33 @@ class EvalHarnessLM(LM):
         return results
     
 
+def deep_merge(dict1, dict2):
+    """Merge two dictionaries deeply, updating keys from dict1 with dict2 recursively."""
+    result = dict1.copy()  # Start with dict1's keys and values
+    for key, value in dict2.items():
+        if isinstance(value, dict) and key in result and isinstance(result[key], dict):
+            # If the key corresponds to a dictionary on both dictionaries, recurse
+            result[key] = deep_merge(result[key], value)
+        else:
+            # Otherwise, update or add the current key
+            result[key] = value
+    return result
+
 def eval_on_val(generator, val_args: ValidationArgs, train_cfg):
-    srcs = {}
+    extra_srcs = {}
+    val_srcs = {}
     for src in val_args.sources:
         path = os.path.join(val_args.root_dir, src)
-        srcs[path] = 1.0
+        extra_srcs[path] = 1.0
     for src in train_cfg.data.sources:
         path = os.path.join(train_cfg.data.root_dir, src)
-        srcs[path] = 1.0
+        val_srcs[path] = 1.0
 
-    multi_state = init_choice_state("", srcs, 0, get_global_rank(), get_world_size(), "*.val.jsonl")
+    extra_state = init_choice_state("", extra_srcs, 0, get_global_rank(), get_world_size(), "*.jsonl")
+    val_state = init_choice_state("", val_srcs, 0, get_global_rank(), get_world_size(), "*val.jsonl")
+    multi_state = deep_merge(extra_state,val_state)
+    
+
     path_to_iter = setup_sources(multi_state)
 
     max_gen_len = generator.max_gen_len
@@ -183,37 +214,51 @@ def eval_on_val(generator, val_args: ValidationArgs, train_cfg):
     for src in path_to_iter:
         jsonl_iterator = path_to_iter[src]
         texts = []
+        curr_tok_cnt = 0
+        nll = 0
+        tok_len = 0
+        char_len = 0
+        metrics = defaultdict(list)
         logger.info(f"Running validation on {src}...")
         for step, (content, state) in enumerate(jsonl_iterator):
-            if state['current_iter'] > 0 or (val_args.max_steps is not None and step >= val_args.max_steps):
+            #if state['current_iter'] > 0 or (val_args.max_steps is not None and step >= val_args.max_steps):
+            if (val_args.max_steps is not None and step >= val_args.max_steps):
                 break
-            content_key = "text" if ("text" in content) else "content"
-            texts.append(content[content_key])
-        
-        _, loglikelihood, _ = generator.generate(texts)
+            
+            content_key = "text" if ("text" in content) else ("raw_content" if ("raw_content" in content) else "content")
 
-        metrics = defaultdict(list)
-        for i, ll in enumerate(loglikelihood):
-            tmp = ll.sum().item()
-            metrics['nll'].append(tmp)
-            metrics['nll_per_token'].append(tmp / len(ll))
-            metrics['nll_per_char'].append(tmp / len(texts[i]))
-
-            metrics['avg_seqlen'].append(len(ll))
+            if curr_tok_cnt > 16384:
+                _, loglikelihood, _ = generator.generate(texts)
+                for i, ll in enumerate(loglikelihood):
+                    print(f"{i}: {ll}")
+                    tmp = ll.sum().item()
+                    nll = nll + tmp
+                    tok_len = tok_len + len(ll)
+                    char_len = char_len + len(texts[i])
+               
+                curr_tok_cnt = 0
+                texts = []
+            else:
+                texts.append(content[content_key])
+                curr_tok_cnt = curr_char_cnt + len(content[content_key])
         
-        for m in metrics:
-            metrics[m] = sum(metrics[m]) / len(metrics[m])
+
+        metrics['nll'] = nll
+        metrics['nll_per_token'] = nll / tok_len if tok_len > 0 else 0
+        metrics['nll_per_char'] = nll / char_len if char_len > 0 else 0
+        metrics['tokens'] = tok_len
         metrics.update(dist_mean_dict(metrics))
         logger.info(f"Validation on {src} done. Metrics: {metrics}")
+        print(f"Validation on {src} done. Metrics: {metrics}")
 
         name = os.path.basename(src)
-        if name in all_val_metrics:
-            logger.warning(f"Duplicate source name {name}, path {src} in validation sources, renaming to {name}_1")
-            name = f"{name}_1"
+        sid = os.path.basename(os.path.dirname(os.path.dirname(src)))
+        #if name in all_val_metrics:
+        #    logger.warning(f"Duplicate source name {name}, path {src} in validation sources, renaming to {name}_{sid}")
+        name = f"{name}_{sid}"
         all_val_metrics[name] = metrics
 
     generator.max_gen_len = max_gen_len
-
     return all_val_metrics
 
 def launch_eval(cfg: EvalArgs):
@@ -243,17 +288,26 @@ def launch_eval(cfg: EvalArgs):
     )
     logger.info("Model loaded")
     model.eval()
-    generator = PackedCausalTransformerGenerator(cfg.generator, model, tokenizer)
 
-    wrap = EvalHarnessLM(generator)
-    results = simple_evaluate(wrap, **asdict(cfg.harness))
+    #max_gen_len = cfg.generator.max_gen_len
+    #max_tokens = cfg.generator.max_tokens
+    #cfg.generator.max_gen_len = 1
+    #cfg.generator.max_tokens = 768
+    generator = PackedCausalTransformerGenerator(cfg.generator, model, tokenizer)
+    #cfg.generator.max_gen_len = max_gen_len
+    #cfg.generator.max_tokens = max_tokens
+
+    results = None
     val_results =  None
+    #wrap = EvalHarnessLM(generator)
+    #results = simple_evaluate(wrap, **asdict(cfg.harness))
     if cfg.validation:
         val_results = eval_on_val(generator, cfg.validation, train_cfg)
     if get_global_rank() == 0:
-        with open(Path(cfg.dump_dir) / "results.json", "w") as f:
-            f.write(json.dumps(results))
-        logger.info(f"All evaluation results: {results['results']}")
+        if results is not None:
+            with open(Path(cfg.dump_dir) / "results.json", "w") as f:
+                f.write(json.dumps(results))
+            logger.info(f"All evaluation results: {results['results']}")
         if val_results is not None:
             with open(Path(cfg.dump_dir) / "validation.json", "w") as f:
                 f.write(json.dumps(val_results))
@@ -267,11 +321,13 @@ def launch_eval(cfg: EvalArgs):
         }
         if cfg.global_step is not None:
             timestamp["global_step"] = cfg.global_step
-        print(
-            json.dumps(timestamp | results["results"]),
-            file=open(metric_log_path, mode="a"),
-            flush=True,
-        )
+
+        if results is not None:
+            print(
+                json.dumps(timestamp | results["results"]),
+                file=open(metric_log_path, mode="a"),
+                flush=True,
+            )
 
         val_log_path = Path(cfg.metric_log_dir) / "metrics.validation.jsonl"
         if val_results is not None:

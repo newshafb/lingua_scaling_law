@@ -36,10 +36,7 @@ data:
     load_async: true
     tokenizer:
         name: tiktoken
-        path: /data/home/feiyang/.llama/checkpoints/Llama3.2-1B/tokenizer.model
-        #path: /fsx-data-quality-law/new/tokenizers/Llama3.2-1B/tokenizer.model
-        #path: /fsx-labs/broz/data/large_experiments/theorem/datasets/tokenizers/tokenizer_final_32k.minus_inf_ws.model
-        #name: sp
+        path: /fsx-data-quality-law/new/tokenizers/Llama3.2-1B/tokenizer.model
 
 profiling:
     run: true

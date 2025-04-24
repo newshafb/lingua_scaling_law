@@ -142,9 +142,9 @@ class CheckpointManager:
         logger.info(f"Other folders: {other_folders}")
 
         if self.dump_every.keep > 0:
-            dump_folders = dump_folders[-self.dump_every.keep :]
+            dump_folders = dump_folders[-self.dump_every.keep:]
         if self.eval_every.keep > 0:
-            eval_folders = eval_folders[-self.eval_every.keep :]
+            eval_folders = eval_folders[-self.eval_every.keep:]
 
         folder_to_keep = set(other_folders + dump_folders + eval_folders)
         folder_to_remove = set(self.existing_saves) - folder_to_keep
